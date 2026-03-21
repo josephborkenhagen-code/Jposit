@@ -1,0 +1,50 @@
+mode: paper  # paper or live
+initial_capital: 100000
+
+symbols:
+  - AAPL
+  - MSFT
+  - GOOGL
+  - AMZN
+  - TSLA
+
+strategies:
+  - sma_crossover
+
+# Strategy parameters
+strategy_params:
+  sma_crossover:
+    short_window: 20
+    long_window: 50
+  rsi:
+    period: 14
+    oversold: 30
+    overbought: 70
+  macd:
+    fast_period: 12
+    slow_period: 26
+    signal_period: 9
+
+# Risk management
+risk:
+  max_position_pct: 0.10    # Max 10% of portfolio per position
+  stop_loss_pct: 0.02       # 2% stop loss
+  take_profit_pct: 0.05     # 5% take profit
+  max_drawdown_pct: 0.15    # 15% max drawdown before halting
+
+# Data settings
+data:
+  interval: 1m              # 1m, 5m, 15m, 1h, 1d
+  lookback_days: 30
+
+# Alpaca API (for live trading)
+alpaca:
+  api_key: YOUR_API_KEY
+  secret_key: YOUR_SECRET_KEY
+  base_url: https://paper-api.alpaca.markets  # Use paper URL for testing
+
+# Dashboard
+dashboard:
+  enabled: true
+  host: 0.0.0.0
+  port: 5000

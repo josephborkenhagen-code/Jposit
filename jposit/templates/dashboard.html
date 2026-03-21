@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jposit Trading Dashboard</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0a0e17;
+            color: #e1e5ee;
+            min-height: 100vh;
+        }
+        .header {
+            background: linear-gradient(135deg, #1a1f2e 0%, #0d1117 100%);
+            padding: 20px 30px;
+            border-bottom: 1px solid #21262d;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .header h1 { font-size: 24px; color: #58a6ff; }
+        .status {
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 600;
+        }
+        .status.running { background: #0d4429; color: #3fb950; }
+        .status.halted { background: #4a1e1e; color: #f85149; }
+        .container { padding: 24px 30px; max-width: 1400px; margin: 0 auto; }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+        .stat-card {
+            background: #161b22;
+            border: 1px solid #21262d;
+            border-radius: 12px;
+            padding: 20px;
+        }
+        .stat-card .label {
+            font-size: 12px;
+            text-transform: uppercase;
+            color: #8b949e;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+        }
+        .stat-card .value {
+            font-size: 28px;
+            font-weight: 700;
+        }
+        .positive { color: #3fb950; }
+        .negative { color: #f85149; }
+        .neutral { color: #e1e5ee; }
+        .section {
+            background: #161b22;
+            border: 1px solid #21262d;
+            border-radius: 12px;
+            margin-bottom: 24px;
+            overflow: hidden;
+        }
+        .section-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid #21262d;
+            font-weight: 600;
+            font-size: 16px;
+        }
+        table { width: 100%; border-collapse: collapse; }
+        th {
+            text-align: left;
+            padding: 12px 16px;
+            font-size: 12px;
+            text-transform: uppercase;
+            color: #8b949e;
+            border-bottom: 1px solid #21262d;
+        }
+        td {
+            padding: 12px 16px;
+            border-bottom: 1px solid #21262d;
+            font-size: 14px;
+        }
+        tr:last-child td { border-bottom: none; }
+        .empty-state {
+            padding: 40px;
+            text-align: center;
+            color: #8b949e;
+        }
+        .badge {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .badge.buy { background: #0d4429; color: #3fb950; }
+        .badge.sell { background: #4a1e1e; color: #f85149; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Jposit Trading Bot</h1>
+        <span class="status running" id="status">LIVE</span>
+    </div>
+
+    <div class="container">
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="label">Portfolio Value</div>
+                <div class="value neutral" id="total-value">$0.00</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">Cash Available</div>
+                <div class="value neutral" id="cash">$0.00</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">Total P&L</div>
+                <div class="value" id="pnl">$0.00</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">P&L %</div>
+                <div class="value" id="pnl-pct">0.00%</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">Drawdown</div>
+                <div class="value" id="drawdown">0.00%</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">Total Trades</div>
+                <div class="value neutral" id="num-trades">0</div>
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="section-header">Open Positions</div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Symbol</th>
+                        <th>Qty</th>
+                        <th>Avg Price</th>
+                        <th>Current</th>
+                        <th>Market Value</th>
+                        <th>P&L</th>
+                        <th>P&L %</th>
+                    </tr>
+                </thead>
+                <tbody id="positions-body">
+                    <tr><td colspan="7" class="empty-state">No open positions</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="section">
+            <div class="section-header">Recent Trades</div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>Symbol</th>
+                        <th>Side</th>
+                        <th>Qty</th>
+                        <th>Price</th>
+                        <th>Strategy</th>
+                    </tr>
+                </thead>
+                <tbody id="trades-body">
+                    <tr><td colspan="6" class="empty-state">No trades yet</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+
+        function fmt(n) { return '$' + n.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}); }
+        function pnlClass(v) { return v >= 0 ? 'positive' : 'negative'; }
+
+        function update(data) {
+            document.getElementById('total-value').textContent = fmt(data.total_value);
+            document.getElementById('cash').textContent = fmt(data.cash);
+            document.getElementById('pnl').textContent = (data.pnl >= 0 ? '+' : '') + fmt(data.pnl);
+            document.getElementById('pnl').className = 'value ' + pnlClass(data.pnl);
+            document.getElementById('pnl-pct').textContent = (data.pnl_pct >= 0 ? '+' : '') + data.pnl_pct.toFixed(2) + '%';
+            document.getElementById('pnl-pct').className = 'value ' + pnlClass(data.pnl_pct);
+            document.getElementById('drawdown').textContent = data.drawdown.toFixed(2) + '%';
+            document.getElementById('drawdown').className = 'value ' + (data.drawdown > 5 ? 'negative' : 'neutral');
+            document.getElementById('num-trades').textContent = data.num_trades;
+
+            const statusEl = document.getElementById('status');
+            if (data.halted) {
+                statusEl.textContent = 'HALTED';
+                statusEl.className = 'status halted';
+            } else {
+                statusEl.textContent = 'LIVE';
+                statusEl.className = 'status running';
+            }
+
+            // Positions table
+            const posBody = document.getElementById('positions-body');
+            if (data.positions.length === 0) {
+                posBody.innerHTML = '<tr><td colspan="7" class="empty-state">No open positions</td></tr>';
+            } else {
+                posBody.innerHTML = data.positions.map(p => `
+                    <tr>
+                        <td><strong>${p.symbol}</strong></td>
+                        <td>${p.quantity}</td>
+                        <td>${fmt(p.avg_price)}</td>
+                        <td>${fmt(p.current_price)}</td>
+                        <td>${fmt(p.market_value)}</td>
+                        <td class="${pnlClass(p.pnl)}">${p.pnl >= 0 ? '+' : ''}${fmt(p.pnl)}</td>
+                        <td class="${pnlClass(p.pnl_pct)}">${p.pnl_pct >= 0 ? '+' : ''}${p.pnl_pct.toFixed(2)}%</td>
+                    </tr>
+                `).join('');
+            }
+
+            // Trades table
+            const tradesBody = document.getElementById('trades-body');
+            if (data.recent_trades.length === 0) {
+                tradesBody.innerHTML = '<tr><td colspan="6" class="empty-state">No trades yet</td></tr>';
+            } else {
+                tradesBody.innerHTML = data.recent_trades.reverse().map(t => {
+                    const time = new Date(t.timestamp).toLocaleString();
+                    return `
+                        <tr>
+                            <td>${time}</td>
+                            <td><strong>${t.symbol}</strong></td>
+                            <td><span class="badge ${t.side.toLowerCase()}">${t.side}</span></td>
+                            <td>${t.quantity}</td>
+                            <td>${fmt(t.price)}</td>
+                            <td>${t.strategy}</td>
+                        </tr>
+                    `;
+                }).join('');
+            }
+        }
+
+        socket.on('portfolio_update', update);
+
+        // Initial fetch
+        fetch('/api/portfolio')
+            .then(r => r.json())
+            .then(update)
+            .catch(() => {});
+    </script>
+</body>
+</html>
