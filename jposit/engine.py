@@ -5,7 +5,7 @@ import time
 from datetime import datetime
 
 from .data_feed import DataFeed
-from .models import Order, Side
+from .models import Order, OrderStatus, Side
 from .portfolio import Portfolio
 from .strategies import get_strategy
 
@@ -23,6 +23,7 @@ class TradingEngine:
         self.strategies = []
         self.running = False
         self._callbacks = []
+        self.pending_orders = {}  # order_id -> Order
 
         # Initialize strategies
         for strategy_name in config["strategies"]:
@@ -85,6 +86,7 @@ class TradingEngine:
                     continue
 
                 # Calculate position size based on signal strength
+                order = None
                 if signal.side == Side.BUY:
                     max_spend = (
                         self.portfolio.cash
@@ -99,8 +101,8 @@ class TradingEngine:
                             quantity=quantity,
                             price=price,
                             strategy=signal.strategy,
+                            reason=self._build_reason(signal, price),
                         )
-                        self.portfolio.execute_order(order)
 
                 elif signal.side == Side.SELL:
                     if symbol in self.portfolio.positions:
@@ -113,8 +115,15 @@ class TradingEngine:
                                 quantity=sell_qty,
                                 price=price,
                                 strategy=signal.strategy,
+                                reason=self._build_reason(signal, price),
                             )
-                            self.portfolio.execute_order(order)
+
+                if order:
+                    self.pending_orders[order.order_id] = order
+                    logger.info(
+                        f"Pending approval: {order.side.value} {order.quantity} "
+                        f"{order.symbol} @ ${order.price:.2f} ({order.reason})"
+                    )
 
         self._notify()
 
@@ -145,6 +154,79 @@ class TradingEngine:
                 logger.error(f"Engine error: {e}")
 
             time.sleep(interval_seconds)
+
+    def _build_reason(self, signal, price):
+        """Build a human-readable reason for the trade."""
+        meta = signal.metadata
+        if signal.strategy == "sma_crossover":
+            short = meta.get("short_sma", 0)
+            long = meta.get("long_sma", 0)
+            if signal.side == Side.BUY:
+                return (
+                    f"Golden Cross detected: 20-day SMA (${short}) crossed above "
+                    f"50-day SMA (${long}). This bullish pattern suggests upward "
+                    f"momentum. Current price: ${price:.2f}. "
+                    f"Signal strength: {signal.strength:.0%}."
+                )
+            else:
+                return (
+                    f"Death Cross detected: 20-day SMA (${short}) crossed below "
+                    f"50-day SMA (${long}). This bearish pattern suggests downward "
+                    f"momentum. Current price: ${price:.2f}. "
+                    f"Signal strength: {signal.strength:.0%}."
+                )
+        elif signal.strategy == "rsi":
+            rsi = meta.get("rsi", 0)
+            if signal.side == Side.BUY:
+                return (
+                    f"RSI oversold at {rsi:.1f} (below 30). Stock may be undervalued. "
+                    f"Current price: ${price:.2f}. Signal strength: {signal.strength:.0%}."
+                )
+            else:
+                return (
+                    f"RSI overbought at {rsi:.1f} (above 70). Stock may be overvalued. "
+                    f"Current price: ${price:.2f}. Signal strength: {signal.strength:.0%}."
+                )
+        elif signal.strategy == "macd":
+            macd_val = meta.get("macd", 0)
+            macd_signal = meta.get("signal", 0)
+            if signal.side == Side.BUY:
+                return (
+                    f"MACD bullish crossover: MACD ({macd_val:.2f}) crossed above "
+                    f"signal line ({macd_signal:.2f}). Current price: ${price:.2f}. "
+                    f"Signal strength: {signal.strength:.0%}."
+                )
+            else:
+                return (
+                    f"MACD bearish crossover: MACD ({macd_val:.2f}) crossed below "
+                    f"signal line ({macd_signal:.2f}). Current price: ${price:.2f}. "
+                    f"Signal strength: {signal.strength:.0%}."
+                )
+        return f"{signal.strategy} signal: {signal.side.value} at ${price:.2f}"
+
+    def approve_order(self, order_id):
+        """Approve a pending order for execution."""
+        if order_id not in self.pending_orders:
+            return False, "Order not found"
+        order = self.pending_orders.pop(order_id)
+        # Refresh price before executing
+        current_price = self.data_feed.get_latest_price(order.symbol)
+        if current_price > 0:
+            order.price = current_price
+        self.portfolio.execute_order(order)
+        logger.info(f"Approved: {order.side.value} {order.quantity} {order.symbol} @ ${order.price:.2f}")
+        self._notify()
+        return True, order
+
+    def reject_order(self, order_id):
+        """Reject a pending order."""
+        if order_id not in self.pending_orders:
+            return False, "Order not found"
+        order = self.pending_orders.pop(order_id)
+        order.status = OrderStatus.CANCELLED
+        logger.info(f"Rejected: {order.side.value} {order.quantity} {order.symbol}")
+        self._notify()
+        return True, order
 
     def stop(self):
         """Stop the trading loop."""

@@ -1,5 +1,6 @@
 """Data models for trades, positions, and signals."""
 
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -36,7 +37,8 @@ class Order:
     status: OrderStatus = OrderStatus.PENDING
     timestamp: datetime = field(default_factory=datetime.now)
     fill_price: float = 0.0
-    order_id: str = ""
+    order_id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
+    reason: str = ""
 
 
 @dataclass

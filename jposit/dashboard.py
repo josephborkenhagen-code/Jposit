@@ -4,7 +4,7 @@ import json
 import logging
 import threading
 
-from flask import Flask, render_template
+from flask import Flask, render_template, request, jsonify
 from flask_socketio import SocketIO
 
 logger = logging.getLogger(__name__)
@@ -18,9 +18,21 @@ def create_app(engine):
 
     # Register engine callback to push updates via WebSocket
     def on_portfolio_update(summary):
+        # Include pending orders in the update
+        summary["pending_orders"] = _serialize_pending(engine)
         socketio.emit("portfolio_update", summary)
 
     engine.on_update(on_portfolio_update)
+
+    # Push pending orders when they arrive
+    original_run_once = engine.run_once
+
+    def patched_run_once():
+        original_run_once()
+        if engine.pending_orders:
+            socketio.emit("pending_orders", _serialize_pending(engine))
+
+    engine.run_once = patched_run_once
 
     @app.route("/")
     def index():
@@ -37,7 +49,43 @@ def create_app(engine):
         }
         return json.dumps(safe_config)
 
+    @app.route("/api/pending")
+    def api_pending():
+        return jsonify(_serialize_pending(engine))
+
+    @app.route("/api/approve/<order_id>", methods=["POST"])
+    def api_approve(order_id):
+        success, result = engine.approve_order(order_id)
+        if success:
+            return jsonify({"status": "approved", "order_id": order_id})
+        return jsonify({"status": "error", "message": result}), 404
+
+    @app.route("/api/reject/<order_id>", methods=["POST"])
+    def api_reject(order_id):
+        success, result = engine.reject_order(order_id)
+        if success:
+            return jsonify({"status": "rejected", "order_id": order_id})
+        return jsonify({"status": "error", "message": result}), 404
+
     return app, socketio
+
+
+def _serialize_pending(engine):
+    """Serialize pending orders for the API/websocket."""
+    orders = []
+    for oid, order in engine.pending_orders.items():
+        orders.append({
+            "order_id": order.order_id,
+            "symbol": order.symbol,
+            "side": order.side.value,
+            "quantity": order.quantity,
+            "price": order.price,
+            "total": round(order.quantity * order.price, 2),
+            "strategy": order.strategy,
+            "reason": order.reason,
+            "timestamp": order.timestamp.isoformat(),
+        })
+    return orders
 
 
 def run_dashboard(engine, host="0.0.0.0", port=5000):
