@@ -1,5 +1,7 @@
 """MACD (Moving Average Convergence Divergence) Strategy."""
 
+from typing import Optional
+
 import pandas as pd
 
 from ..models import Side, Signal
@@ -15,7 +17,7 @@ class MACDStrategy(Strategy):
         self.slow_period = params.get("slow_period", 26)
         self.signal_period = params.get("signal_period", 9)
 
-    def analyze(self, symbol, data: pd.DataFrame) -> Signal | None:
+    def analyze(self, symbol, data: pd.DataFrame) -> Optional[Signal]:
         if len(data) < self.slow_period + self.signal_period + 1:
             return None
 

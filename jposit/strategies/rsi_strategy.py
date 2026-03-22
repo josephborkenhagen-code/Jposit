@@ -1,5 +1,7 @@
 """RSI (Relative Strength Index) Strategy."""
 
+from typing import Optional
+
 import pandas as pd
 
 from ..models import Side, Signal
@@ -27,7 +29,7 @@ class RSIStrategy(Strategy):
         rsi = 100 - (100 / (1 + rs))
         return rsi
 
-    def analyze(self, symbol, data: pd.DataFrame) -> Signal | None:
+    def analyze(self, symbol, data: pd.DataFrame) -> Optional[Signal]:
         if len(data) < self.period + 2:
             return None
 

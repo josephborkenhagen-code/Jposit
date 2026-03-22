@@ -1,5 +1,7 @@
 """Simple Moving Average Crossover Strategy."""
 
+from typing import Optional
+
 import pandas as pd
 
 from ..models import Side, Signal
@@ -14,7 +16,7 @@ class SMACrossoverStrategy(Strategy):
         self.short_window = params.get("short_window", 20)
         self.long_window = params.get("long_window", 50)
 
-    def analyze(self, symbol, data: pd.DataFrame) -> Signal | None:
+    def analyze(self, symbol, data: pd.DataFrame) -> Optional[Signal]:
         if len(data) < self.long_window + 1:
             return None
 

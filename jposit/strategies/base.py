@@ -1,6 +1,7 @@
 """Base strategy interface."""
 
 from abc import ABC, abstractmethod
+from typing import Optional
 
 import pandas as pd
 
@@ -15,7 +16,7 @@ class Strategy(ABC):
         self.name = self.__class__.__name__
 
     @abstractmethod
-    def analyze(self, symbol, data: pd.DataFrame) -> Signal | None:
+    def analyze(self, symbol, data: pd.DataFrame) -> Optional[Signal]:
         """Analyze market data and return a trading signal, or None."""
         pass
 
