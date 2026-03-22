@@ -67,6 +67,35 @@ def create_app(engine):
             return jsonify({"status": "rejected", "order_id": order_id})
         return jsonify({"status": "error", "message": result}), 404
 
+    @app.route("/api/test-signal", methods=["POST"])
+    def api_test_signal():
+        """Create a fake pending order to test the notification UI."""
+        from .models import Order, Side
+        import random
+        symbol = random.choice(engine.symbols)
+        price = round(random.uniform(150, 220), 2)
+        qty = random.randint(10, 100)
+        side = random.choice([Side.BUY, Side.SELL])
+        if side == Side.BUY:
+            reason = (
+                f"Golden Cross detected: 20-day SMA (${price + 2:.2f}) crossed above "
+                f"50-day SMA (${price - 3:.2f}). This bullish pattern suggests upward "
+                f"momentum. Current price: ${price:.2f}. Signal strength: 85%."
+            )
+        else:
+            reason = (
+                f"Death Cross detected: 20-day SMA (${price - 2:.2f}) crossed below "
+                f"50-day SMA (${price + 3:.2f}). This bearish pattern suggests downward "
+                f"momentum. Current price: ${price:.2f}. Signal strength: 72%."
+            )
+        order = Order(
+            symbol=symbol, side=side, quantity=qty, price=price,
+            strategy="sma_crossover", reason=reason,
+        )
+        engine.pending_orders[order.order_id] = order
+        socketio.emit("pending_orders", _serialize_pending(engine))
+        return jsonify({"status": "ok", "order_id": order.order_id})
+
     return app, socketio
 
 

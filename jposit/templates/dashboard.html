@@ -222,7 +222,10 @@
 <body>
     <div class="header">
         <h1>Jposit Trading Bot</h1>
-        <span class="status running" id="status">LIVE</span>
+        <div style="display:flex;align-items:center;gap:12px;">
+            <button class="btn" onclick="testSignal()" style="background:#f0883e;color:#0a0e17;padding:6px 14px;font-size:12px;">Test Signal</button>
+            <span class="status running" id="status">LIVE</span>
+        </div>
     </div>
 
     <div class="container">
@@ -466,6 +469,12 @@
             if (data.pending_orders) renderPending(data.pending_orders);
         });
         socket.on('pending_orders', renderPending);
+
+        function testSignal() {
+            fetch('/api/test-signal', { method: 'POST' })
+                .then(r => r.json())
+                .then(() => fetch('/api/pending').then(r => r.json()).then(renderPending));
+        }
 
         // Initial fetch
         fetch('/api/portfolio')
