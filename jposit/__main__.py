@@ -22,6 +22,7 @@ def main():
         "--interval", type=int, default=60, help="Trading loop interval in seconds"
     )
     parser.add_argument("--dashboard", action="store_true", help="Enable web dashboard")
+    parser.add_argument("--port", type=int, help="Dashboard port (default: 5000)")
     parser.add_argument(
         "--mode", choices=["paper", "live"], help="Trading mode (overrides config)"
     )
@@ -65,7 +66,7 @@ def main():
         from .dashboard import run_dashboard
 
         host = config["dashboard"].get("host", "0.0.0.0")
-        port = config["dashboard"].get("port", 5000)
+        port = args.port or config["dashboard"].get("port", 5000)
         run_dashboard(engine, host, port)
 
     # Run trading loop
